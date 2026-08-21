@@ -14,6 +14,10 @@ Abhängigkeiten und lässt sich als statische Datei ausliefern.
    Anschließend die tatsächliche Länge eingeben; für gängige Referenzen
    (Bankkarte, 1-€- und 2-€-Münze, A4-Blatt) stehen Voreinstellungen bereit.
    Der Maßstab wird im Browser gespeichert und steht beim nächsten Aufruf wieder zur Verfügung.
+   Alternativ **EC-Karte**: eine Schablone im ID-1-Format (85,60 × 53,98 mm) einblenden,
+   deckungsgleich über die reale Karte legen, am Griff in der Größe anpassen und
+   **Auf Karte kalibrieren** drücken. Ist bereits ein Maßstab bekannt, erscheint die
+   Schablone von vornherein in ihrer echten Größe und taugt so als Gegenprobe.
 3. **Messen** – nacheinander Punkte auf dem Bild antippen. Jedes Segment und die Gesamtlänge
    werden unter dem Bild angezeigt.
 4. **Umfang** – schließt den Punktzug ab drei Punkten zu einem Polygon und ergänzt

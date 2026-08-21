@@ -10,7 +10,7 @@
 html,body{margin:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 body{min-height:100dvh}
 [hidden]{display:none!important}
-input,select,button{min-height:50px;border:1px solid #d0d0d0;border-radius:12px;background:#fff;font:inherit;color:inherit}
+input,select,button{min-height:50px;border:1px solid #ccc;border-radius:12px;background:#fff;font:inherit;color:inherit}
 input{width:100%;padding:0 16px}
 select{padding:0 10px}
 button{cursor:pointer}
@@ -32,7 +32,7 @@ button{cursor:pointer}
 .toolbar button[aria-pressed=true]{background:#111;border-color:#111;color:#fff}
 
 /* ---------- Kalibrierpanel ---------- */
-.panel{max-width:700px;margin:0 auto 12px;padding:14px;border:1px solid #d0d0d0;border-radius:16px;background:#fafafa;display:flex;flex-direction:column;gap:10px}
+.panel{max-width:700px;margin:0 auto 12px;padding:14px;border:1px solid #ccc;border-radius:16px;background:#fafafa;display:flex;flex-direction:column;gap:10px}
 .panel-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:14px}
 .panel-row select{width:100%}
 .panel-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -56,6 +56,12 @@ button{cursor:pointer}
 .points{position:absolute;inset:0;z-index:8;pointer-events:none}
 .point{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border:3px solid #fff;border-radius:50%;background:#e33;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700}
 .point--ref{background:#ffb300;color:#111}
+
+/* ---------- Referenzkarte im ID-1-Format ---------- */
+.card{position:absolute;z-index:5;transform:translate(-50%,-50%);border:2px solid #4ff;border-radius:10px;background:linear-gradient(135deg,#1b7b88aa,#14202aaa);box-shadow:0 2px 12px #0008;color:#fff;padding:10px;font-size:13px;line-height:1.35;touch-action:none;user-select:none;overflow:hidden}
+.card small{display:block;opacity:.85;font-size:11px}
+.card:after{content:"EC";position:absolute;right:10px;bottom:6px;font-size:20px;font-weight:700;opacity:.7}
+.card-size{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;min-height:32px;padding:0;border:none;border-radius:50%;color:#fff;background:#000b;font-size:14px;touch-action:none}
 
 /* ---------- Lineal ---------- */
 .ruler{position:absolute;z-index:7;height:54px;border:2px solid #fff;border-radius:8px;background:#fff3;box-shadow:0 2px 12px #0006;touch-action:none;user-select:none;backdrop-filter:blur(2px)}
@@ -94,13 +100,15 @@ button{cursor:pointer}
     <button id="start" type="button">Kamera starten</button>
     <button id="calibrate" type="button" aria-pressed="false">Kalibrierung</button>
     <button id="measure" type="button" aria-pressed="false">Messen</button>
+    <button id="cardToggle" type="button" aria-pressed="false">EC-Karte</button>
     <button id="rulerToggle" type="button" aria-pressed="false">Lineal</button>
-    <button id="take" type="button">Foto aufnehmen</button>
+    <button id="take" type="button">Foto</button>
   </div>
 
   <div class="toolbar toolbar--sub">
     <button id="closeToggle" type="button" aria-pressed="false">Umfang</button>
     <button id="undo" type="button">Punkt zurück</button>
+    <button id="calCard" type="button" hidden>Auf Karte kalibrieren</button>
     <button id="save" type="button">Foto speichern</button>
     <button id="clearCal" type="button" hidden>Kalibrierung löschen</button>
     <button id="reset" type="button">Zurücksetzen</button>
@@ -130,6 +138,9 @@ button{cursor:pointer}
     <img id="photo" alt="" hidden>
     <svg id="overlay" class="overlay"></svg>
     <div id="points" class="points"></div>
+    <div id="card" class="card" hidden>Referenzkarte<small>85,60 × 53,98 mm</small>
+      <button id="cardSize" class="card-size" type="button" aria-label="Größe anpassen">⤡</button>
+    </div>
     <div id="ruler" class="ruler" hidden>
       <svg id="rulerScale"></svg>
       <button id="rotate" class="handle rotate" type="button" aria-label="In Schritten drehen">↻</button>
@@ -158,6 +169,8 @@ const RULER_FALLBACK_W = 280; // Breite ohne Kalibrierung
 const RULER_PAD = 20;         // Rand fuer die Griffe, damit sie die Skala nicht verdecken
 const EXPORT_W = 1440;
 const STAGE_RATIO = 3 / 4;    // Breite / Höhe, identisch zur CSS-aspect-ratio
+const CARD_MM = { w: 85.6, h: 53.98 };        // Bank-/EC-Karte, Format ID-1
+const CARD_RATIO = CARD_MM.h / CARD_MM.w;
 
 const PRESETS = [
   { label: "EC-/Bankkarte längs", mm: 85.6 },
@@ -181,6 +194,7 @@ let points = [];              // Messpunkte, normiert
 let closed = false;           // Umfang-Modus: Polygonzug schließen
 let cal = null;               // {mmPerNorm, refMm}
 let ruler = { visible: false, nx: 0.5, ny: 0.5, angle: 0 };
+let card = { visible: false, nx: 0.5, ny: 0.5, wNorm: 0.4 };
 let tap = null;               // laufender Tipp: {id,x,y,ok}
 let grab = null;              // laufende Lineal-Geste
 
@@ -191,6 +205,7 @@ const login = $("login"), app = $("app"), form = $("loginForm"), codeInput = $("
 const errorBox = $("error"), video = $("video"), stage = $("stage"), hint = $("hint");
 const statusBox = $("status"), photo = $("photo"), overlay = $("overlay");
 const pointLayer = $("points"), rulerEl = $("ruler"), rulerScale = $("rulerScale");
+const cardEl = $("card");
 const panel = $("panel"), preset = $("preset"), refLen = $("refLen");
 const refUnit = $("refUnit"), panelMsg = $("panelMsg");
 
@@ -354,6 +369,7 @@ function render() {
   const g = geometry();
   renderPoints(g);
   renderOverlay(g);
+  renderCard();
   renderRuler();
   renderStatus();
   renderControls();
@@ -376,6 +392,17 @@ function renderOverlay(g) {
     parts.push(`<text class="label" x="${t.x}" y="${t.y}">${esc(t.text)}</text>`);
   }
   overlay.innerHTML = parts.join("");
+}
+
+/** Referenzkarte; bei vorhandener Kalibrierung wird sie maßstabsgetreu gezeichnet. */
+function renderCard() {
+  cardEl.hidden = !card.visible;
+  if (!card.visible) return;
+  const w = card.wNorm * stageW();
+  cardEl.style.width = w + "px";
+  cardEl.style.height = (w * CARD_RATIO) + "px";
+  cardEl.style.left = card.nx * stageW() + "px";
+  cardEl.style.top = card.ny * stageH() + "px";
 }
 
 function renderRuler() {
@@ -435,8 +462,10 @@ function renderControls() {
   $("calibrate").setAttribute("aria-pressed", String(mode === "calibrate"));
   $("measure").setAttribute("aria-pressed", String(mode === "measure"));
   $("rulerToggle").setAttribute("aria-pressed", String(ruler.visible));
+  $("cardToggle").setAttribute("aria-pressed", String(card.visible));
+  $("calCard").hidden = !card.visible;
   $("closeToggle").setAttribute("aria-pressed", String(closed));
-  $("take").textContent = frozen ? "Live" : "Foto aufnehmen";
+  $("take").textContent = frozen ? "Live" : "Foto";
   $("clearCal").hidden = !cal;
 }
 
@@ -486,6 +515,31 @@ function drawOverlay(ctx) {
     ctx.fillStyle = d.kind === "ref" ? "#111" : "#fff";
     ctx.fillText(String(d.n), d.x, d.y);
   }
+}
+
+function drawCard(ctx) {
+  if (!card.visible) return;
+  const w = card.wNorm * stageW(), h = w * CARD_RATIO;
+  const x = card.nx * stageW() - w / 2, y = card.ny * stageH() - h / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10);
+  else ctx.rect(x, y, w, h);
+  ctx.fillStyle = "rgba(20,45,55,0.45)";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#44ffff";
+  ctx.stroke();
+
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillText("Referenzkarte", x + 10, y + 10);
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillText("85,60 × 53,98 mm", x + 10, y + 28);
+  ctx.restore();
 }
 
 function drawRuler(ctx) {
@@ -555,6 +609,7 @@ function renderExport() {
   if (ready()) {
     ctx.save();
     ctx.scale(c.width / stageW(), c.height / stageH());
+    drawCard(ctx);
     drawOverlay(ctx);
     drawRuler(ctx);
     ctx.restore();
@@ -717,7 +772,7 @@ function handleTap(clientX, clientY) {
  * iOS doppelt auslösen und beide Punkte auf denselben Fleck setzen.
  */
 stage.addEventListener("pointerdown", e => {
-  tap = { id: e.pointerId, x: e.clientX, y: e.clientY, ok: !e.target.closest(".ruler") };
+  tap = { id: e.pointerId, x: e.clientX, y: e.clientY, ok: !e.target.closest(".ruler, .card") };
 });
 
 stage.addEventListener("pointerup", e => {
@@ -725,7 +780,7 @@ stage.addEventListener("pointerup", e => {
   tap = null;
   if (!t || t.id !== e.pointerId || !t.ok) return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
-  if (e.target.closest(".ruler")) return;
+  if (e.target.closest(".ruler, .card")) return;
   if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > TAP_SLOP) return;
   handleTap(e.clientX, e.clientY);
 });
@@ -783,6 +838,45 @@ function endGrab(e) {
 rulerEl.addEventListener("pointerup", endGrab);
 rulerEl.addEventListener("pointercancel", endGrab);
 
+/* ================= Referenzkarte bewegen und anpassen ================= */
+
+cardEl.addEventListener("pointerdown", e => {
+  if (e.target.closest(".card-size")) return;
+  const r = stage.getBoundingClientRect();
+  grab = {
+    kind: "card-move",
+    id: e.pointerId,
+    dx: card.nx * r.width - (e.clientX - r.left),
+    dy: card.ny * r.height - (e.clientY - r.top)
+  };
+  cardEl.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+$("cardSize").addEventListener("pointerdown", e => {
+  e.stopPropagation();
+  e.preventDefault();
+  grab = { kind: "card-size", id: e.pointerId };
+  cardEl.setPointerCapture(e.pointerId);
+});
+
+cardEl.addEventListener("pointermove", e => {
+  if (!grab || grab.id !== e.pointerId) return;
+  const r = stage.getBoundingClientRect();
+
+  if (grab.kind === "card-move") {
+    card.nx = clamp(((e.clientX - r.left) + grab.dx) / r.width, 0, 1);
+    card.ny = clamp(((e.clientY - r.top) + grab.dy) / r.height, 0, 1);
+  } else if (grab.kind === "card-size") {
+    const cx = r.left + card.nx * r.width;
+    card.wNorm = clamp(2 * Math.abs(e.clientX - cx) / r.width, 0.08, 0.98);
+  }
+  renderCard();
+});
+
+cardEl.addEventListener("pointerup", endGrab);
+cardEl.addEventListener("pointercancel", endGrab);
+
 $("rotate").onclick = e => {
   e.stopPropagation();
   ruler.angle = (ruler.angle + 15) % 360;
@@ -817,6 +911,28 @@ $("measure").onclick = () => {
   mode = mode === "measure" ? "idle" : "measure";
   closePanel();
   setHint(mode === "measure" ? "Punkte der Messstrecke antippen." : "Messen beendet.");
+  render();
+};
+
+$("cardToggle").onclick = () => {
+  card.visible = !card.visible;
+  if (card.visible) {
+    card.nx = 0.5;
+    card.ny = 0.5;
+    // Bei vorhandener Kalibrierung erscheint die Karte in ihrer echten Größe.
+    if (cal) card.wNorm = clamp(CARD_MM.w / cal.mmPerNorm, 0.08, 0.98);
+    setHint("Karte deckungsgleich über die echte Karte legen, Größe am Griff anpassen.");
+  }
+  render();
+};
+
+$("calCard").onclick = () => {
+  if (!card.visible) return;
+  cal = { mmPerNorm: CARD_MM.w / card.wNorm, refMm: CARD_MM.w };
+  saveCal();
+  refPoints = [];
+  closePanel();
+  setHint("Anhand der Karte kalibriert. Messen drücken und Punkte antippen.");
   render();
 };
 
