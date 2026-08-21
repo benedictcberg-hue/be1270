@@ -1,1 +1,1063 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title></title><style>*{box-sizing:border-box}html,body{margin:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{min-height:100dvh}.login{min-height:100dvh;display:grid;place-items:center;padding:24px}.login-form{width:min(100%,340px);display:flex;flex-direction:column;gap:12px}.row{display:grid;grid-template-columns:1fr 56px;gap:10px}input,button{min-height:50px;border:1px solid #ccc;border-radius:12px;background:#fff;font:inherit}input{width:100%;padding:0 16px}.row button{width:56px;font-size:24px}.send{width:100%}.error{min-height:20px;color:#b00020;font-size:14px}.app{padding:14px}.app[hidden],.login[hidden],.point[hidden],.ruler[hidden],#photo[hidden]{display:none}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.toolbar button{padding:0 13px}.stage{position:relative;width:100%;max-width:700px;margin:auto;aspect-ratio:3/4;overflow:hidden;border-radius:22px;background:#101820;touch-action:none}.stage.video-mode video{pointer-events:none}.stage video,#photo{display:block;width:100%;height:100%;object-fit:cover}.stage img{position:absolute;inset:0;z-index:1;pointer-events:none}.hint{position:absolute;z-index:4;top:12px;left:12px;right:12px;padding:10px;border-radius:10px;color:#fff;background:#0008;font-size:14px;pointer-events:none}.point{position:absolute;z-index:8;width:30px;height:30px;margin:-15px 0 0 -15px;border:3px solid #fff;border-radius:50%;background:#e33;pointer-events:none}.ruler{position:absolute;z-index:7;width:280px;height:54px;border:2px solid #fff;border-radius:8px;background:#fff3;box-shadow:0 2px 12px #0006;touch-action:none;user-select:none;backdrop-filter:blur(2px)}.ruler-scale{display:flex;justify-content:space-around;color:#fff;padding-top:7px;font-size:12px}.ruler-scale span{position:relative}.ruler-scale span:before{content:"";position:absolute;top:16px;left:50%;height:22px;border-left:1px solid #fff}.rotate{position:absolute;right:-18px;top:-18px;width:36px;height:36px;min-height:36px;border-radius:50%;color:#fff;background:#000b}.status{max-width:700px;margin:10px auto;font-size:14px}.small{font-size:12px;color:#555}.card{position:absolute;z-index:6;width:220px;height:139px;border:2px solid #4ff;border-radius:10px;background:linear-gradient(135deg,#1b7b88aa,#14202aaa);box-shadow:0 2px 12px #0008;touch-action:none;user-select:none;color:#fff;padding:14px}.card:after{content:"EC";position:absolute;right:12px;bottom:10px;font-size:20px;font-weight:700;opacity:.7}.card[hidden]{display:none}</style></head><body><section id="login" class="login"><form id="loginForm" class="login-form" autocomplete="off"><div class="row"><input id="code" type="password" inputmode="text" aria-label="Code"><button id="question" type="button">?</button></div><button class="send" type="submit">Senden</button><div id="error" class="error"></div></form></section><section id="app" class="app" hidden><div class="toolbar"><button id="start">Kamera starten</button><button id="calibrate">Punkte</button><button id="cardMode">EC-Karte</button><button id="rulerToggle">Lineal</button><button id="take">Foto</button><button id="reset">Reset</button></div><div class="stage" id="stage"><video id="video" autoplay muted playsinline webkit-playsinline></video><img id="photo" hidden><div id="hint" class="hint">Kamera starten.</div><div id="p1" class="point" hidden></div><div id="p2" class="point" hidden></div><div id="card" class="card" hidden>Referenzkarte<br><small>85,60 × 53,98 mm</small></div><div id="ruler" class="ruler" hidden><div class="ruler-scale"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span></div><button id="rotate" class="rotate" type="button">↻</button></div></div><div id="status" class="status"></div><div class="small">Die EC-Karte ist als Referenz im ID-1-Format hinterlegt: 85,60 × 53,98 mm.</div></section><script>const ACCESS_CODE="umfang13";let q=0,stream=null,calibrating=false,points=[],angle=0,x=0,y=0,drag=null;const $=id=>document.getElementById(id),login=$("login"),app=$("app"),form=$("loginForm"),code=$("code"),question=$("question"),error=$("error"),video=$("video"),stage=$("stage"),hint=$("hint"),status=$("status"),p1=$("p1"),p2=$("p2"),ruler=$("ruler"),card=$("card"),photo=$("photo");function unlock(){if(code.value===ACCESS_CODE&&q>=2){login.hidden=true;app.hidden=false}}question.onclick=()=>{q++;if(q>=2)unlock()};form.onsubmit=e=>e.preventDefault();$("start").onclick=async()=>{try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});video.srcObject=stream;hint.textContent="EC-Karte-Modus oder Punkte auswählen."}catch(e){hint.textContent="Kamera nicht verfügbar."}};$("cardMode").onclick=()=>{card.hidden=!card.hidden;card.style.left=(stage.clientWidth/2-110)+"px";card.style.top=(stage.clientHeight/2-70)+"px";hint.textContent=card.hidden?"EC-Karte ausgeblendet.":"EC-Karte über die reale Karte legen und anpassen."};$("calibrate").onclick=()=>{calibrating=true;points=[];p1.hidden=true;p2.hidden=true;stage.classList.add("video-mode");hint.textContent="Zwei Punkte auf dem Bild antippen."};function addPoint(e){if(!calibrating||points.length>=2)return;const r=stage.getBoundingClientRect(),pt={x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))};points.push(pt);const el=points.length===1?p1:p2;el.style.left=pt.x+"px";el.style.top=pt.y+"px";el.hidden=false;if(points.length===2){calibrating=false;stage.classList.remove("video-mode");status.textContent="Zwei Referenzpunkte markiert.";hint.textContent="Referenz gespeichert."}}stage.addEventListener("pointerup",e=>{if(e.pointerType!=="mouse"||e.button===0)addPoint(e)});stage.addEventListener("touchend",e=>{if(e.changedTouches[0])addPoint(e.changedTouches[0])},{passive:true});function move(el){el.onpointerdown=e=>{drag={el,x:e.clientX,y:e.clientY,ox:parseFloat(el.style.left)||0,oy:parseFloat(el.style.top)||0};el.setPointerCapture(e.pointerId)};el.onpointermove=e=>{if(drag&&drag.el===el){el.style.left=drag.ox+e.clientX-drag.x+"px";el.style.top=drag.oy+e.clientY-drag.y+"px"}};el.onpointerup=()=>drag=null;el.onpointercancel=()=>drag=null}move(card);$("rulerToggle").onclick=()=>{ruler.hidden=!ruler.hidden;if(!ruler.hidden){x=stage.clientWidth/2-140;y=stage.clientHeight/2-27;update()}};function update(){ruler.style.transform=`translate(${x}px,${y}px) rotate(${angle}deg)`}$("rotate").onclick=e=>{e.stopPropagation();angle+=15;update()};ruler.onpointerdown=e=>{if(e.target.id==="rotate")return;drag={el:ruler,x:e.clientX,y:e.clientY,ox:x,oy:y};ruler.setPointerCapture(e.pointerId)};ruler.onpointermove=e=>{if(drag&&drag.el===ruler){x=drag.ox+e.clientX-drag.x;y=drag.oy+e.clientY-drag.y;update()}};ruler.onpointerup=()=>drag=null;ruler.onpointercancel=()=>drag=null;$("take").onclick=()=>{if(!video.videoWidth)return;const c=document.createElement("canvas"),w=video.videoWidth,h=video.videoHeight;c.width=w;c.height=h;c.getContext("2d").drawImage(video,0,0,w,h);photo.src=c.toDataURL("image/jpeg",.9);photo.hidden=false;hint.textContent="Foto aufgenommen."};$("reset").onclick=()=>location.reload();</script></body></html>
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title></title>
+<style>
+/* ---------- Grundlagen ---------- */
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{min-height:100dvh}
+[hidden]{display:none!important}
+input,select,button{min-height:50px;border:1px solid #ccc;border-radius:12px;background:#fff;font:inherit;color:inherit}
+input{width:100%;padding:0 16px}
+select{padding:0 10px}
+button{cursor:pointer}
+
+/* ---------- Anmeldung ---------- */
+.login{min-height:100dvh;display:grid;place-items:center;padding:24px}
+.login-form{width:min(100%,340px);display:flex;flex-direction:column;gap:12px}
+.row{display:grid;grid-template-columns:1fr 56px;gap:10px}
+.row button{width:56px;font-size:24px}
+.send{width:100%}
+.error{min-height:20px;color:#b00020;font-size:14px}
+
+/* ---------- Werkzeugleisten ---------- */
+.app{padding:14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.toolbar button{padding:0 14px}
+.toolbar--sub{margin-bottom:12px}
+.toolbar--sub button{min-height:40px;padding:0 12px;font-size:14px;color:#333}
+.toolbar button[aria-pressed=true]{background:#111;border-color:#111;color:#fff}
+
+/* ---------- Kalibrierpanel ---------- */
+.panel{max-width:700px;margin:0 auto 12px;padding:14px;border:1px solid #ccc;border-radius:16px;background:#fafafa;display:flex;flex-direction:column;gap:10px}
+.panel-row{display:grid;grid-template-columns:88px 1fr auto;gap:8px;align-items:center;font-size:14px}
+.panel-row select{width:100%}
+.panel-actions{display:flex;gap:8px;flex-wrap:wrap}
+.panel-actions button{flex:1 1 130px;min-height:44px;padding:0 12px}
+.panel-actions .primary{background:#111;border-color:#111;color:#fff}
+.panel-msg{min-height:18px;font-size:13px;color:#b00020}
+
+/* ---------- Bildbereich ---------- */
+.stage{position:relative;width:100%;max-width:700px;margin:auto;aspect-ratio:3/4;overflow:hidden;border-radius:22px;background:#101820;touch-action:none}
+.stage video,.stage img{display:block;width:100%;height:100%;object-fit:cover}
+.stage img{position:absolute;inset:0;z-index:1;pointer-events:none}
+.hint{position:absolute;z-index:9;top:12px;left:12px;right:12px;padding:10px;border-radius:10px;color:#fff;background:#0008;font-size:14px;pointer-events:none}
+
+/* ---------- Messüberlagerung ---------- */
+.overlay{position:absolute;inset:0;z-index:6;width:100%;height:100%;pointer-events:none}
+.overlay .halo{stroke:#0009;stroke-width:7;stroke-linecap:round;fill:none}
+.overlay .line{stroke:#fff;stroke-width:3;stroke-linecap:round;fill:none}
+.overlay .ref .line{stroke:#ffb300}
+.overlay .close .line{stroke-dasharray:10 7}
+.overlay .label{fill:#fff;stroke:#000c;stroke-width:4px;paint-order:stroke;font-size:13px;font-weight:600;text-anchor:middle;dominant-baseline:middle}
+.points{position:absolute;inset:0;z-index:8;pointer-events:none}
+.point{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border:3px solid #fff;border-radius:50%;background:#e33;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700}
+.point--ref{background:#ffb300;color:#111}
+
+/* ---------- Referenzkarte im ID-1-Format ---------- */
+.card{position:absolute;z-index:5;transform:translate(-50%,-50%);border:2px solid #4ff;border-radius:10px;background:linear-gradient(135deg,#1b7b88aa,#14202aaa);box-shadow:0 2px 12px #0008;color:#fff;padding:10px;font-size:13px;line-height:1.35;touch-action:none;user-select:none;overflow:hidden}
+.card small{display:block;opacity:.85;font-size:11px}
+.card:after{content:"EC";position:absolute;right:10px;bottom:6px;font-size:20px;font-weight:700;opacity:.7}
+.card-size{position:absolute;right:-16px;bottom:-16px;width:32px;height:32px;min-height:32px;padding:0;border:none;border-radius:50%;color:#fff;background:#000b;font-size:14px;touch-action:none}
+
+/* ---------- Lineal ---------- */
+.ruler{position:absolute;z-index:7;height:54px;border:2px solid #fff;border-radius:8px;background:#fff3;box-shadow:0 2px 12px #0006;touch-action:none;user-select:none;backdrop-filter:blur(2px)}
+.ruler svg{display:block;width:100%;height:100%;overflow:visible}
+.ruler .maj{stroke:#fff;stroke-width:2}
+.ruler .min{stroke:#fff;stroke-width:1}
+.ruler .lab{fill:#fff;font-size:11px;font-weight:600;text-anchor:middle}
+.handle{position:absolute;width:36px;height:36px;min-height:36px;padding:0;border:none;border-radius:50%;color:#fff;background:#000b;font-size:15px;line-height:1}
+.rotate{right:-18px;top:-18px}
+.rotate-free{right:-18px;bottom:-18px;touch-action:none}
+
+/* ---------- Ausgabe ---------- */
+.status{max-width:700px;margin:10px auto;font-size:14px}
+.status b{font-weight:600}
+.status ul{margin:6px 0 0;padding-left:20px;color:#333}
+.status li{margin:2px 0}
+.small{max-width:700px;margin:0 auto;font-size:12px;color:#555}
+</style>
+</head>
+<body>
+
+<section id="login" class="login">
+  <form id="loginForm" class="login-form" autocomplete="off">
+    <div class="row">
+      <input id="code" type="password" inputmode="text" aria-label="Code">
+      <button id="question" type="button">?</button>
+    </div>
+    <button class="send" type="submit">Senden</button>
+    <div id="error" class="error"></div>
+  </form>
+</section>
+
+<section id="app" class="app" hidden>
+
+  <div class="toolbar">
+    <button id="start" type="button">Kamera starten</button>
+    <button id="calibrate" type="button" aria-pressed="false">Kalibrierung</button>
+    <button id="measure" type="button" aria-pressed="false">Messen</button>
+    <button id="cardToggle" type="button" aria-pressed="false">EC-Karte</button>
+    <button id="rulerToggle" type="button" aria-pressed="false">Lineal</button>
+    <button id="take" type="button">Foto</button>
+  </div>
+
+  <div class="toolbar toolbar--sub">
+    <button id="closeToggle" type="button" aria-pressed="false">Umfang</button>
+    <button id="undo" type="button">Punkt zurück</button>
+    <button id="calCard" type="button" hidden>Auf Karte kalibrieren</button>
+    <button id="save" type="button">Foto speichern</button>
+    <button id="clearCal" type="button" hidden>Kalibrierung löschen</button>
+    <button id="reset" type="button">Zurücksetzen</button>
+  </div>
+
+  <div id="panel" class="panel" hidden>
+    <label class="panel-row">Referenz
+      <select id="preset" aria-label="Referenzobjekt"></select>
+      <span></span>
+    </label>
+    <label class="panel-row">Länge
+      <input id="refLen" type="text" inputmode="decimal" aria-label="Referenzlänge">
+      <select id="refUnit" aria-label="Einheit">
+        <option value="1">mm</option>
+        <option value="10">cm</option>
+      </select>
+    </label>
+    <div class="panel-actions">
+      <button id="calApply" class="primary" type="button">Übernehmen</button>
+      <button id="calCancel" type="button">Abbrechen</button>
+    </div>
+    <div id="panelMsg" class="panel-msg"></div>
+  </div>
+
+  <div class="stage" id="stage">
+    <video id="video" autoplay muted playsinline webkit-playsinline></video>
+    <img id="photo" alt="" hidden>
+    <svg id="overlay" class="overlay"></svg>
+    <div id="points" class="points"></div>
+    <div id="card" class="card" hidden>Referenzkarte<small>85,60 × 53,98 mm</small>
+      <button id="cardSize" class="card-size" type="button" aria-label="Größe anpassen">⤡</button>
+    </div>
+    <div id="ruler" class="ruler" hidden>
+      <svg id="rulerScale"></svg>
+      <button id="rotate" class="handle rotate" type="button" aria-label="In Schritten drehen">↻</button>
+      <button id="rotateFree" class="handle rotate-free" type="button" aria-label="Frei drehen">✥</button>
+    </div>
+    <div id="hint" class="hint">Kamera starten und anschließend Kalibrierung drücken.</div>
+  </div>
+
+  <div id="status" class="status"></div>
+  <div class="small">Die Messung ist eine kalibrierte Näherung. Sie gilt nur in der Ebene des Referenzobjekts.</div>
+
+</section>
+
+<script>
+"use strict";
+
+/* ================= Konstanten ================= */
+
+const ACCESS_CODE = "umfang13";
+const STORE_KEY = "kmh.cal";
+const MAX_POINTS = 24;
+const TAP_SLOP = 10;          // px Zeigerbewegung, ab der ein Tipp als Wischen gilt
+const MIN_REF_NORM = 0.02;    // kürzeste zulässige Referenzstrecke, in Stage-Breiten
+const RULER_H = 54;
+const RULER_FALLBACK_W = 280; // Breite ohne Kalibrierung
+const RULER_PAD = 20;         // Rand fuer die Griffe, damit sie die Skala nicht verdecken
+const EXPORT_W = 1440;
+const STAGE_RATIO = 3 / 4;    // Breite / Höhe, identisch zur CSS-aspect-ratio
+const CARD_MM = { w: 85.6, h: 53.98 };        // Bank-/EC-Karte, Format ID-1
+const CARD_RATIO = CARD_MM.h / CARD_MM.w;
+
+const PRESETS = [
+  { label: "EC-/Bankkarte längs", mm: 85.6 },
+  { label: "EC-/Bankkarte quer", mm: 53.98 },
+  { label: "1-€-Münze", mm: 23.25 },
+  { label: "2-€-Münze", mm: 25.75 },
+  { label: "A4 lange Seite", mm: 297 },
+  { label: "A4 kurze Seite", mm: 210 },
+  { label: "Eigene Länge", mm: 0 }
+];
+
+/* ================= Zustand ================= */
+
+let questionClicks = 0;
+let stream = null;
+let shot = null;              // Canvas des eingefrorenen Bildes
+let frozen = false;
+let mode = "idle";            // "idle" | "calibrate" | "measure"
+let refPoints = [];           // Kalibrierpunkte, normiert {nx,ny}
+let points = [];              // Messpunkte, normiert
+let closed = false;           // Umfang-Modus: Polygonzug schließen
+let cal = null;               // {mmPerNorm, refMm}
+let ruler = { visible: false, nx: 0.5, ny: 0.5, angle: 0 };
+let card = { visible: false, nx: 0.5, ny: 0.5, wNorm: 0.4 };
+let tap = null;               // laufender Tipp: {id,x,y,ok}
+let grab = null;              // laufende Lineal-Geste
+
+/* ================= DOM ================= */
+
+const $ = id => document.getElementById(id);
+const login = $("login"), app = $("app"), form = $("loginForm"), codeInput = $("code");
+const errorBox = $("error"), video = $("video"), stage = $("stage"), hint = $("hint");
+const statusBox = $("status"), photo = $("photo"), overlay = $("overlay");
+const pointLayer = $("points"), rulerEl = $("ruler"), rulerScale = $("rulerScale");
+const cardEl = $("card");
+const panel = $("panel"), preset = $("preset"), refLen = $("refLen");
+const refUnit = $("refUnit"), panelMsg = $("panelMsg");
+
+/* ================= Hilfsfunktionen ================= */
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const stageW = () => stage.clientWidth;
+const stageH = () => stage.clientHeight;
+const ready = () => stageW() > 0;
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+/** Bildpunkte je Millimeter bei der aktuellen Stage-Breite; 0 ohne Kalibrierung. */
+function pxPerMm() {
+  return cal && ready() ? stageW() / cal.mmPerNorm : 0;
+}
+
+function num(v, digits) {
+  return v.toLocaleString("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function fmtLen(mm) {
+  if (mm < 10) return num(mm, 1) + " mm";
+  if (mm < 1000) return num(mm / 10, 1) + " cm";
+  return num(mm / 1000, 2) + " m";
+}
+
+function fmtArea(mm2) {
+  const cm2 = mm2 / 100;
+  return cm2 < 10000 ? num(cm2, 1) + " cm²" : num(cm2 / 10000, 2) + " m²";
+}
+
+/** Strecke zwischen zwei normierten Punkten, in Bildpunkten der aktuellen Stage. */
+function distPx(a, b) {
+  return Math.hypot((b.nx - a.nx) * stageW(), (b.ny - a.ny) * stageH());
+}
+
+/** Bildpunkte in eine Längenangabe übersetzen — ohne Kalibrierung bleibt es bei Bildpunkten. */
+function describe(px) {
+  const ppmm = pxPerMm();
+  return ppmm ? fmtLen(px / ppmm) : Math.round(px) + " Bildpunkte";
+}
+
+/* ================= Speicher ================= */
+
+function saveCal() {
+  try {
+    if (cal) localStorage.setItem(STORE_KEY, JSON.stringify(cal));
+    else localStorage.removeItem(STORE_KEY);
+  } catch (e) { /* Privater Modus: Kalibrierung gilt dann nur für diese Sitzung. */ }
+}
+
+function loadCal() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (o && isFinite(o.mmPerNorm) && o.mmPerNorm > 0) {
+      return { mmPerNorm: o.mmPerNorm, refMm: isFinite(o.refMm) ? o.refMm : 0 };
+    }
+  } catch (e) { /* beschädigter Eintrag wird ignoriert */ }
+  return null;
+}
+
+/* ================= Messgeometrie ================= */
+
+/** Indexpaare der Messsegmente; im Umfang-Modus inklusive Schlusssegment. */
+function segmentPairs() {
+  const n = points.length, pairs = [];
+  for (let i = 0; i < n - 1; i++) pairs.push([i, i + 1]);
+  if (closed && n >= 3) pairs.push([n - 1, 0]);
+  return pairs;
+}
+
+/** Fläche des geschlossenen Zugs in Bildpunkten², Gaußsche Trapezformel. */
+function areaPx() {
+  const W = stageW(), H = stageH(), n = points.length;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const a = points[i], b = points[(i + 1) % n];
+    sum += (a.nx * W) * (b.ny * H) - (b.nx * W) * (a.ny * H);
+  }
+  return Math.abs(sum) / 2;
+}
+
+/**
+ * Zeichengeometrie in Stage-Bildpunkten. Wird sowohl für das SVG-Overlay als auch
+ * für den Foto-Export benutzt, damit beide garantiert dasselbe zeigen.
+ */
+function geometry() {
+  const W = stageW(), H = stageH();
+  const at = p => ({ x: p.nx * W, y: p.ny * H });
+  const lines = [], labels = [], dots = [];
+
+  if (refPoints.length === 2) {
+    const a = at(refPoints[0]), b = at(refPoints[1]);
+    lines.push({ a, b, kind: "ref" });
+    if (cal) labels.push(labelAt(a, b, fmtLen(cal.refMm)));
+  }
+  refPoints.forEach((p, i) => dots.push(Object.assign(at(p), { kind: "ref", n: i + 1 })));
+
+  for (const [i, j] of segmentPairs()) {
+    const a = at(points[i]), b = at(points[j]);
+    lines.push({ a, b, kind: j === 0 ? "close" : "seg" });
+    labels.push(labelAt(a, b, describe(distPx(points[i], points[j]))));
+  }
+  points.forEach((p, i) => dots.push(Object.assign(at(p), { kind: "measure", n: i + 1 })));
+
+  return { lines, labels, dots };
+}
+
+/** Beschriftung mittig neben der Strecke, stets zur oberen Seite hin versetzt. */
+function labelAt(a, b, text) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  let px = -dy / len, py = dx / len;
+  if (py > 0) { px = -px; py = -py; }
+  return { x: (a.x + b.x) / 2 + px * 16, y: (a.y + b.y) / 2 + py * 16, text };
+}
+
+/* ================= Linealgeometrie ================= */
+
+/** Längste darstellbare runde Länge in cm; 0, wenn keine Skala möglich ist. */
+function rulerCm() {
+  const ppmm = pxPerMm();
+  if (!ppmm) return 0;
+  const max = stageW() - 24 - 2 * RULER_PAD;
+  for (const cm of [10, 5, 3, 2, 1]) if (cm * 10 * ppmm <= max) return cm;
+  return 0;
+}
+
+/** Breite und Teilstriche des Lineals, gemeinsam für Anzeige und Export. */
+function rulerTicks() {
+  const ppmm = pxPerMm(), cm = rulerCm();
+  const ticks = [];
+
+  if (cm > 0) {
+    const w = cm * 10 * ppmm;
+    for (let mm = 0; mm <= cm * 10; mm++) {
+      const major = mm % 10 === 0;
+      ticks.push({
+        x: clamp(mm * ppmm, 0.5, w - 0.5),
+        len: major ? 22 : mm % 5 === 0 ? 14 : 8,
+        major,
+        label: major ? String(mm / 10) : null
+      });
+    }
+    return { w, ticks, unit: "cm" };
+  }
+
+  const w = RULER_FALLBACK_W;
+  for (let i = 0; i <= 10; i++) {
+    ticks.push({ x: clamp(i * w / 10, 0.5, w - 0.5), len: 22, major: true, label: String(i) });
+  }
+  return { w, ticks, unit: null };
+}
+
+/* ================= Darstellung ================= */
+
+function render() {
+  if (!ready()) return;
+  const g = geometry();
+  renderPoints(g);
+  renderOverlay(g);
+  renderCard();
+  renderRuler();
+  renderStatus();
+  renderControls();
+}
+
+function renderPoints(g) {
+  pointLayer.innerHTML = g.dots.map(d =>
+    `<div class="point point--${d.kind}" style="left:${d.x}px;top:${d.y}px">${d.n}</div>`
+  ).join("");
+}
+
+function renderOverlay(g) {
+  const parts = g.lines.map(l =>
+    `<g class="${l.kind}">` +
+    `<line class="halo" x1="${l.a.x}" y1="${l.a.y}" x2="${l.b.x}" y2="${l.b.y}"/>` +
+    `<line class="line" x1="${l.a.x}" y1="${l.a.y}" x2="${l.b.x}" y2="${l.b.y}"/>` +
+    `</g>`
+  );
+  for (const t of g.labels) {
+    parts.push(`<text class="label" x="${t.x}" y="${t.y}">${esc(t.text)}</text>`);
+  }
+  overlay.innerHTML = parts.join("");
+}
+
+/** Referenzkarte; bei vorhandener Kalibrierung wird sie maßstabsgetreu gezeichnet. */
+function renderCard() {
+  cardEl.hidden = !card.visible;
+  if (!card.visible) return;
+  const w = card.wNorm * stageW();
+  cardEl.style.width = w + "px";
+  cardEl.style.height = (w * CARD_RATIO) + "px";
+  cardEl.style.left = card.nx * stageW() + "px";
+  cardEl.style.top = card.ny * stageH() + "px";
+}
+
+function renderRuler() {
+  rulerEl.hidden = !ruler.visible;
+  if (!ruler.visible) return;
+
+  const { w, ticks, unit } = rulerTicks();
+  const parts = ticks.map(t =>
+    `<line class="${t.major ? "maj" : "min"}" x1="${t.x + RULER_PAD}" y1="${RULER_H - 8}" ` +
+    `x2="${t.x + RULER_PAD}" y2="${RULER_H - 8 - t.len}"/>` +
+    (t.label ? `<text class="lab" x="${t.x + RULER_PAD}" y="14">${t.label}</text>` : "")
+  );
+  if (unit) {
+    parts.push(`<text class="lab" x="${RULER_PAD - 4}" y="${RULER_H - 14}" style="text-anchor:end">cm</text>`);
+  }
+
+  rulerScale.innerHTML = parts.join("");
+  rulerEl.style.width = (w + 2 * RULER_PAD) + "px";
+  rulerEl.style.left = ruler.nx * stageW() + "px";
+  rulerEl.style.top = ruler.ny * stageH() + "px";
+  rulerEl.style.transform = `translate(-50%,-50%) rotate(${ruler.angle}deg)`;
+}
+
+function renderStatus() {
+  const rows = [];
+
+  if (cal) {
+    const perCm = pxPerMm() * 10;
+    rows.push(`<div><b>Maßstab:</b> ${num(perCm, 1)} Bildpunkte je cm` +
+      (cal.refMm ? ` (Referenz ${esc(fmtLen(cal.refMm))})` : "") + `</div>`);
+  } else {
+    rows.push(`<div><b>Nicht kalibriert.</b> Kalibrierung drücken und ein Objekt bekannter Länge ausmessen.</div>`);
+  }
+
+  const pairs = segmentPairs();
+  if (pairs.length) {
+    const lengths = pairs.map(([i, j]) => distPx(points[i], points[j]));
+    const totalPx = lengths.reduce((a, b) => a + b, 0);
+    const items = pairs.map(([i, j], k) =>
+      `<li>${i + 1} → ${j + 1}: ${esc(describe(lengths[k]))}</li>`).join("");
+    const label = closed && points.length >= 3 ? "Umfang" : "Gesamtlänge";
+    rows.push(`<div><b>${label}:</b> ${esc(describe(totalPx))}</div><ul>${items}</ul>`);
+
+    if (closed && points.length >= 3) {
+      const ppmm = pxPerMm();
+      rows.push(`<div><b>Fläche:</b> ` +
+        (ppmm ? esc(fmtArea(areaPx() / (ppmm * ppmm))) : Math.round(areaPx()) + " Bildpunkte²") + `</div>`);
+    }
+  } else if (points.length === 1) {
+    rows.push(`<div>Ein Punkt gesetzt. Weiteren Punkt antippen.</div>`);
+  }
+
+  statusBox.innerHTML = rows.join("");
+}
+
+function renderControls() {
+  $("calibrate").setAttribute("aria-pressed", String(mode === "calibrate"));
+  $("measure").setAttribute("aria-pressed", String(mode === "measure"));
+  $("rulerToggle").setAttribute("aria-pressed", String(ruler.visible));
+  $("cardToggle").setAttribute("aria-pressed", String(card.visible));
+  $("calCard").hidden = !card.visible;
+  $("closeToggle").setAttribute("aria-pressed", String(closed));
+  $("take").textContent = frozen ? "Live" : "Foto";
+  $("clearCal").hidden = !cal;
+}
+
+/* ================= Foto-Export ================= */
+
+function strokeLine(ctx, l) {
+  ctx.beginPath();
+  ctx.moveTo(l.a.x, l.a.y);
+  ctx.lineTo(l.b.x, l.b.y);
+  ctx.stroke();
+}
+
+/** Dieselbe Geometrie wie das SVG-Overlay, auf ein Canvas gezeichnet. */
+function drawOverlay(ctx) {
+  const g = geometry();
+  ctx.lineCap = "round";
+  for (const l of g.lines) {
+    ctx.setLineDash(l.kind === "close" ? [10, 7] : []);
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = "rgba(0,0,0,0.6)";
+    strokeLine(ctx, l);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = l.kind === "ref" ? "#ffb300" : "#fff";
+    strokeLine(ctx, l);
+  }
+  ctx.setLineDash([]);
+
+  ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const t of g.labels) {
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(0,0,0,0.8)";
+    ctx.strokeText(t.text, t.x, t.y);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(t.text, t.x, t.y);
+  }
+
+  for (const d of g.dots) {
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, 13.5, 0, Math.PI * 2);
+    ctx.fillStyle = d.kind === "ref" ? "#ffb300" : "#ee3333";
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#fff";
+    ctx.stroke();
+    ctx.fillStyle = d.kind === "ref" ? "#111" : "#fff";
+    ctx.fillText(String(d.n), d.x, d.y);
+  }
+}
+
+function drawCard(ctx) {
+  if (!card.visible) return;
+  const w = card.wNorm * stageW(), h = w * CARD_RATIO;
+  const x = card.nx * stageW() - w / 2, y = card.ny * stageH() - h / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10);
+  else ctx.rect(x, y, w, h);
+  ctx.fillStyle = "rgba(20,45,55,0.45)";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#44ffff";
+  ctx.stroke();
+
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillText("Referenzkarte", x + 10, y + 10);
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillText("85,60 × 53,98 mm", x + 10, y + 28);
+  ctx.restore();
+}
+
+function drawRuler(ctx) {
+  if (!ruler.visible) return;
+  const { w, ticks, unit } = rulerTicks();
+
+  const boxW = w + 2 * RULER_PAD;
+  ctx.save();
+  ctx.translate(ruler.nx * stageW(), ruler.ny * stageH());
+  ctx.rotate(ruler.angle * Math.PI / 180);
+  ctx.translate(-boxW / 2, -RULER_H / 2);
+
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(0, 0, boxW, RULER_H, 8);
+  else ctx.rect(0, 0, boxW, RULER_H);
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+
+  ctx.strokeStyle = "#fff";
+  ctx.fillStyle = "#fff";
+  ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  for (const t of ticks) {
+    ctx.lineWidth = t.major ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(t.x + RULER_PAD, RULER_H - 8);
+    ctx.lineTo(t.x + RULER_PAD, RULER_H - 8 - t.len);
+    ctx.stroke();
+    if (t.label) ctx.fillText(t.label, t.x + RULER_PAD, 14);
+  }
+  if (unit) {
+    ctx.textAlign = "right";
+    ctx.fillText("cm", RULER_PAD - 4, RULER_H - 14);
+  }
+  ctx.restore();
+}
+
+/** Aktuelles Videobild, exakt so beschnitten wie object-fit:cover auf der Stage. */
+function grabFrame(targetW) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+
+  let sw = vw, sh = vw / STAGE_RATIO;
+  if (sh > vh) { sh = vh; sw = vh * STAGE_RATIO; }
+
+  const c = document.createElement("canvas");
+  c.width = Math.round(targetW);
+  c.height = Math.round(targetW / STAGE_RATIO);
+  c.getContext("2d").drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, c.width, c.height);
+  return c;
+}
+
+function renderExport() {
+  const base = frozen && shot ? shot : grabFrame(EXPORT_W);
+  if (!base) return null;
+
+  const c = document.createElement("canvas");
+  c.width = base.width;
+  c.height = base.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(base, 0, 0);
+
+  if (ready()) {
+    ctx.save();
+    ctx.scale(c.width / stageW(), c.height / stageH());
+    drawCard(ctx);
+    drawOverlay(ctx);
+    drawRuler(ctx);
+    ctx.restore();
+  }
+  return c;
+}
+
+function dataUrlToBlob(url) {
+  const comma = url.indexOf(",");
+  const mime = /:(.*?);/.exec(url.slice(0, comma))[1];
+  const bin = atob(url.slice(comma + 1));
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return new Blob([buf], { type: mime });
+}
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function timestamp() {
+  return new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+}
+
+/* ================= Kamera ================= */
+
+function setHint(text) { hint.textContent = text; }
+
+function stopStream() {
+  if (!stream) return;
+  stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+function cameraError(e) {
+  const name = e && e.name;
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "Kamerazugriff verweigert. Berechtigung in den Einstellungen freigeben.";
+  }
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "Keine passende Kamera gefunden.";
+  if (name === "NotReadableError") return "Die Kamera wird bereits von einer anderen App benutzt.";
+  return "Kamera nicht verfügbar.";
+}
+
+async function startCamera() {
+  if (!window.isSecureContext) {
+    setHint("Kamera benötigt eine HTTPS-Verbindung.");
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setHint("Dieser Browser unterstützt keinen Kamerazugriff.");
+    return;
+  }
+
+  stopStream();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+    video.srcObject = stream;
+    try { await video.play(); } catch (e) { /* iOS spielt teils schon von selbst */ }
+    frozen = false;
+    shot = null;
+    photo.hidden = true;
+    photo.removeAttribute("src");
+    setHint("Kalibrierung drücken und zwei Punkte auf einem Objekt bekannter Länge setzen.");
+  } catch (e) {
+    setHint(cameraError(e));
+  }
+  render();
+}
+
+function resumeLive() {
+  frozen = false;
+  shot = null;
+  photo.hidden = true;
+  photo.removeAttribute("src");
+  if (stream) video.play().catch(() => {});
+}
+
+/* ================= Kalibrierung ================= */
+
+function openPanel() {
+  panelMsg.textContent = "";
+  preset.selectedIndex = 0;
+  preset.onchange();
+  panel.hidden = false;
+  setHint("Länge der markierten Strecke eingeben und übernehmen.");
+}
+
+function closePanel() {
+  panel.hidden = true;
+  panelMsg.textContent = "";
+}
+
+function applyCal() {
+  const value = parseFloat(String(refLen.value).trim().replace(",", "."));
+  const mm = value * parseFloat(refUnit.value);
+  if (!isFinite(mm) || mm <= 0) {
+    panelMsg.textContent = "Bitte eine gültige Länge eingeben.";
+    return;
+  }
+  if (refPoints.length !== 2) {
+    panelMsg.textContent = "Es sind keine zwei Referenzpunkte gesetzt.";
+    return;
+  }
+
+  const dNorm = distPx(refPoints[0], refPoints[1]) / stageW();
+  if (dNorm < MIN_REF_NORM) {
+    panelMsg.textContent = "Die beiden Punkte liegen zu dicht beieinander.";
+    return;
+  }
+
+  cal = { mmPerNorm: mm / dNorm, refMm: mm };
+  saveCal();
+  closePanel();
+  setHint("Kalibriert. Messen drücken und Punkte antippen.");
+  render();
+}
+
+/* ================= Punkte setzen ================= */
+
+function handleTap(clientX, clientY) {
+  if (mode === "idle") return;
+  const r = stage.getBoundingClientRect();
+  const p = {
+    nx: clamp((clientX - r.left) / r.width, 0, 1),
+    ny: clamp((clientY - r.top) / r.height, 0, 1)
+  };
+
+  if (mode === "calibrate") {
+    if (refPoints.length >= 2) return;
+    refPoints.push(p);
+    if (refPoints.length === 2) {
+      mode = "idle";
+      openPanel();
+    } else {
+      setHint("Zweiten Punkt der Referenzstrecke antippen.");
+    }
+  } else {
+    if (points.length >= MAX_POINTS) {
+      setHint("Mehr als " + MAX_POINTS + " Punkte sind nicht vorgesehen.");
+      return;
+    }
+    points.push(p);
+  }
+  render();
+}
+
+/*
+ * Ein einziger pointerup-Listener. Ein zusätzlicher touchend-Listener würde auf
+ * iOS doppelt auslösen und beide Punkte auf denselben Fleck setzen.
+ */
+stage.addEventListener("pointerdown", e => {
+  tap = { id: e.pointerId, x: e.clientX, y: e.clientY, ok: !e.target.closest(".ruler, .card") };
+});
+
+stage.addEventListener("pointerup", e => {
+  const t = tap;
+  tap = null;
+  if (!t || t.id !== e.pointerId || !t.ok) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  if (e.target.closest(".ruler, .card")) return;
+  if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > TAP_SLOP) return;
+  handleTap(e.clientX, e.clientY);
+});
+
+stage.addEventListener("pointercancel", () => { tap = null; });
+
+/* ================= Lineal bewegen und drehen ================= */
+
+rulerEl.addEventListener("pointerdown", e => {
+  if (e.target.closest(".handle")) return;
+  const r = stage.getBoundingClientRect();
+  grab = {
+    kind: "move",
+    id: e.pointerId,
+    dx: ruler.nx * r.width - (e.clientX - r.left),
+    dy: ruler.ny * r.height - (e.clientY - r.top)
+  };
+  rulerEl.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+$("rotateFree").addEventListener("pointerdown", e => {
+  e.stopPropagation();
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  const cx = r.left + ruler.nx * r.width, cy = r.top + ruler.ny * r.height;
+  grab = {
+    kind: "rotate",
+    id: e.pointerId,
+    off: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - ruler.angle
+  };
+  rulerEl.setPointerCapture(e.pointerId);
+});
+
+rulerEl.addEventListener("pointermove", e => {
+  if (!grab || grab.id !== e.pointerId) return;
+  const r = stage.getBoundingClientRect();
+
+  if (grab.kind === "move") {
+    ruler.nx = clamp(((e.clientX - r.left) + grab.dx) / r.width, 0, 1);
+    ruler.ny = clamp(((e.clientY - r.top) + grab.dy) / r.height, 0, 1);
+  } else {
+    const cx = r.left + ruler.nx * r.width, cy = r.top + ruler.ny * r.height;
+    let deg = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI - grab.off;
+    const snapped = Math.round(deg / 15) * 15;
+    if (Math.abs(deg - snapped) < 2) deg = snapped;   // weiche Rastung
+    ruler.angle = deg;
+  }
+  renderRuler();
+});
+
+function endGrab(e) {
+  if (grab && grab.id === e.pointerId) grab = null;
+}
+rulerEl.addEventListener("pointerup", endGrab);
+rulerEl.addEventListener("pointercancel", endGrab);
+
+/* ================= Referenzkarte bewegen und anpassen ================= */
+
+cardEl.addEventListener("pointerdown", e => {
+  if (e.target.closest(".card-size")) return;
+  const r = stage.getBoundingClientRect();
+  grab = {
+    kind: "card-move",
+    id: e.pointerId,
+    dx: card.nx * r.width - (e.clientX - r.left),
+    dy: card.ny * r.height - (e.clientY - r.top)
+  };
+  cardEl.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+$("cardSize").addEventListener("pointerdown", e => {
+  e.stopPropagation();
+  e.preventDefault();
+  grab = { kind: "card-size", id: e.pointerId };
+  cardEl.setPointerCapture(e.pointerId);
+});
+
+cardEl.addEventListener("pointermove", e => {
+  if (!grab || grab.id !== e.pointerId) return;
+  const r = stage.getBoundingClientRect();
+
+  if (grab.kind === "card-move") {
+    card.nx = clamp(((e.clientX - r.left) + grab.dx) / r.width, 0, 1);
+    card.ny = clamp(((e.clientY - r.top) + grab.dy) / r.height, 0, 1);
+  } else if (grab.kind === "card-size") {
+    const cx = r.left + card.nx * r.width;
+    card.wNorm = clamp(2 * Math.abs(e.clientX - cx) / r.width, 0.08, 0.98);
+  }
+  renderCard();
+});
+
+cardEl.addEventListener("pointerup", endGrab);
+cardEl.addEventListener("pointercancel", endGrab);
+
+$("rotate").onclick = e => {
+  e.stopPropagation();
+  ruler.angle = (ruler.angle + 15) % 360;
+  renderRuler();
+};
+
+/* ================= Bedienelemente ================= */
+
+$("start").onclick = startCamera;
+
+$("calApply").onclick = applyCal;
+
+$("calCancel").onclick = () => {
+  closePanel();
+  refPoints = [];
+  mode = "idle";
+  setHint("Kalibrierung abgebrochen.");
+  render();
+};
+
+$("calibrate").onclick = () => {
+  mode = mode === "calibrate" ? "idle" : "calibrate";
+  refPoints = [];
+  closePanel();
+  setHint(mode === "calibrate"
+    ? "Zwei Punkte auf einem Objekt bekannter Länge antippen."
+    : "Kalibrierung abgebrochen.");
+  render();
+};
+
+$("measure").onclick = () => {
+  mode = mode === "measure" ? "idle" : "measure";
+  closePanel();
+  setHint(mode === "measure" ? "Punkte der Messstrecke antippen." : "Messen beendet.");
+  render();
+};
+
+$("cardToggle").onclick = () => {
+  card.visible = !card.visible;
+  if (card.visible) {
+    card.nx = 0.5;
+    card.ny = 0.5;
+    // Bei vorhandener Kalibrierung erscheint die Karte in ihrer echten Größe.
+    if (cal) card.wNorm = clamp(CARD_MM.w / cal.mmPerNorm, 0.08, 0.98);
+    setHint("Karte deckungsgleich über die echte Karte legen, Größe am Griff anpassen.");
+  }
+  render();
+};
+
+$("calCard").onclick = () => {
+  if (!card.visible) return;
+  cal = { mmPerNorm: CARD_MM.w / card.wNorm, refMm: CARD_MM.w };
+  saveCal();
+  refPoints = [];
+  closePanel();
+  setHint("Anhand der Karte kalibriert. Messen drücken und Punkte antippen.");
+  render();
+};
+
+$("rulerToggle").onclick = () => {
+  ruler.visible = !ruler.visible;
+  if (ruler.visible) { ruler.nx = 0.5; ruler.ny = 0.5; }
+  render();
+};
+
+$("closeToggle").onclick = () => {
+  closed = !closed;
+  render();
+};
+
+$("undo").onclick = () => {
+  if (!panel.hidden) {
+    closePanel();
+    mode = "calibrate";
+    refPoints.pop();
+    setHint("Zweiten Punkt der Referenzstrecke antippen.");
+  } else if (mode === "calibrate" && refPoints.length) {
+    refPoints.pop();
+  } else if (points.length) {
+    points.pop();
+  } else if (refPoints.length) {
+    refPoints.pop();
+  }
+  render();
+};
+
+$("take").onclick = () => {
+  if (frozen) {
+    resumeLive();
+    setHint("Live-Bild.");
+    render();
+    return;
+  }
+  const c = grabFrame(EXPORT_W);
+  if (!c) {
+    setHint("Kein Kamerabild vorhanden. Zuerst die Kamera starten.");
+    return;
+  }
+  shot = c;
+  photo.src = c.toDataURL("image/jpeg", 0.92);
+  photo.hidden = false;
+  frozen = true;
+  video.pause();
+  setHint("Standbild. Punkte lassen sich weiterhin setzen.");
+  render();
+};
+
+$("save").onclick = () => {
+  const c = renderExport();
+  if (!c) {
+    setHint("Kein Bild zum Speichern vorhanden.");
+    return;
+  }
+  const name = "messung-" + timestamp() + ".jpg";
+  const blob = dataUrlToBlob(c.toDataURL("image/jpeg", 0.92));
+
+  try {
+    const file = new File([blob], name, { type: "image/jpeg" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).catch(err => {
+        if (!err || err.name !== "AbortError") download(blob, name);
+      });
+      return;
+    }
+  } catch (e) { /* kein File-Konstruktor: direkter Download */ }
+
+  download(blob, name);
+};
+
+$("clearCal").onclick = () => {
+  cal = null;
+  saveCal();
+  refPoints = [];
+  closePanel();
+  setHint("Kalibrierung gelöscht.");
+  render();
+};
+
+$("reset").onclick = () => {
+  points = [];
+  refPoints = [];
+  closed = false;
+  mode = "idle";
+  closePanel();
+  resumeLive();
+  setHint(stream ? "Zurückgesetzt." : "Kamera starten und anschließend Kalibrierung drücken.");
+  render();
+};
+
+/* ================= Anmeldung ================= */
+
+function unlock() {
+  if (codeInput.value === ACCESS_CODE && questionClicks >= 2) {
+    login.hidden = true;
+    app.hidden = false;
+    render();
+  } else {
+    errorBox.textContent = "";
+  }
+}
+
+$("question").onclick = () => { questionClicks++; unlock(); };
+form.onsubmit = e => { e.preventDefault(); unlock(); };
+
+/* ================= Start ================= */
+
+preset.innerHTML = PRESETS.map((p, i) => `<option value="${i}">${esc(p.label)}</option>`).join("");
+preset.onchange = () => {
+  const p = PRESETS[preset.selectedIndex];
+  if (p && p.mm) {
+    refLen.value = num(p.mm, p.mm % 1 ? 2 : 0);
+    refUnit.value = "1";
+  } else {
+    refLen.value = "";
+    refLen.focus();
+  }
+};
+
+cal = loadCal();
+new ResizeObserver(() => render()).observe(stage);
+render();
+</script>
+</body>
+</html>
