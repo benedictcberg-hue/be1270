@@ -23,13 +23,25 @@ button{cursor:pointer}
 .send{width:100%}
 .error{min-height:20px;color:#b00020;font-size:14px}
 
-/* ---------- Werkzeugleisten ---------- */
+/* ---------- Steuerung ---------- */
 .app{padding:14px}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.toolbar button{padding:0 14px}
-.toolbar--sub{margin-bottom:12px}
-.toolbar--sub button{min-height:40px;padding:0 12px;font-size:14px;color:#333}
-.toolbar button[aria-pressed=true]{background:#111;border-color:#111;color:#fff}
+.controls{max-width:700px;margin:12px auto 0;display:flex;flex-direction:column;gap:8px}
+
+/* Modus: genau einer von beiden, deshalb ein zusammenhängender Schalter */
+.seg{display:flex;border:1px solid #ccc;border-radius:12px;overflow:hidden}
+.seg button{flex:1;min-height:48px;border:none;border-radius:0;padding:0 12px}
+.seg button+button{border-left:1px solid #ccc}
+
+.tools{display:flex;gap:8px}
+.tools button{flex:1;min-height:48px;padding:0 8px}
+
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.actions button{flex:1 1 auto;min-height:40px;padding:0 12px;font-size:14px;color:#333}
+
+.menu{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid #ccc;border-radius:12px;background:#fafafa}
+.menu button{min-height:44px;font-size:14px}
+
+.controls button[aria-pressed=true]{background:#111;border-color:#111;color:#fff}
 
 /* ---------- Kalibrierpanel ---------- */
 .panel{max-width:700px;margin:0 auto 12px;padding:14px;border:1px solid #ccc;border-radius:16px;background:#fafafa;display:flex;flex-direction:column;gap:10px}
@@ -54,8 +66,11 @@ button{cursor:pointer}
 .overlay .close .line{stroke-dasharray:10 7}
 .overlay .label{fill:#fff;stroke:#000c;stroke-width:4px;paint-order:stroke;font-size:13px;font-weight:600;text-anchor:middle;dominant-baseline:middle}
 .points{position:absolute;inset:0;z-index:8;pointer-events:none}
-.point{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border:3px solid #fff;border-radius:50%;background:#e33;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700}
+.point{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border:3px solid #fff;border-radius:50%;background:#e33;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;pointer-events:auto;touch-action:none;cursor:grab}
 .point--ref{background:#ffb300;color:#111}
+
+/* Lupe: das Bild unter dem Finger, den der Finger verdeckt */
+.loupe{position:absolute;z-index:10;width:112px;height:112px;border:3px solid #fff;border-radius:50%;box-shadow:0 3px 14px #0009;pointer-events:none;background:#101820}
 
 /* ---------- Referenzkarte im ID-1-Format ---------- */
 .card{position:absolute;z-index:5;transform:translate(-50%,-50%);border:2px solid #4ff;border-radius:10px;background:linear-gradient(135deg,#1b7b88aa,#14202aaa);box-shadow:0 2px 12px #0008;color:#fff;padding:10px;font-size:13px;line-height:1.35;touch-action:none;user-select:none;overflow:hidden}
@@ -96,22 +111,21 @@ button{cursor:pointer}
 
 <section id="app" class="app" hidden>
 
-  <div class="toolbar">
-    <button id="start" type="button">Kamera starten</button>
-    <button id="calibrate" type="button" aria-pressed="false">Kalibrierung</button>
-    <button id="measure" type="button" aria-pressed="false">Messen</button>
-    <button id="cardToggle" type="button" aria-pressed="false">EC-Karte</button>
-    <button id="rulerToggle" type="button" aria-pressed="false">Lineal</button>
-    <button id="take" type="button">Foto</button>
-  </div>
-
-  <div class="toolbar toolbar--sub">
-    <button id="closeToggle" type="button" aria-pressed="false">Umfang</button>
-    <button id="undo" type="button">Punkt zurück</button>
-    <button id="calCard" type="button" hidden>Auf Karte kalibrieren</button>
-    <button id="save" type="button">Foto speichern</button>
-    <button id="clearCal" type="button" hidden>Kalibrierung löschen</button>
-    <button id="reset" type="button">Zurücksetzen</button>
+  <div class="stage" id="stage">
+    <video id="video" autoplay muted playsinline webkit-playsinline></video>
+    <img id="photo" alt="" hidden>
+    <svg id="overlay" class="overlay"></svg>
+    <div id="points" class="points"></div>
+    <div id="card" class="card" hidden>Referenzkarte<small>85,60 × 53,98 mm</small>
+      <button id="cardSize" class="card-size" type="button" aria-label="Größe anpassen">⤡</button>
+    </div>
+    <div id="ruler" class="ruler" hidden>
+      <svg id="rulerScale"></svg>
+      <button id="rotate" class="handle rotate" type="button" aria-label="In Schritten drehen">↻</button>
+      <button id="rotateFree" class="handle rotate-free" type="button" aria-label="Frei drehen">✥</button>
+    </div>
+    <canvas id="loupe" class="loupe" hidden></canvas>
+    <div id="hint" class="hint">Kamera starten und anschließend kalibrieren.</div>
   </div>
 
   <div id="panel" class="panel" hidden>
@@ -133,20 +147,32 @@ button{cursor:pointer}
     <div id="panelMsg" class="panel-msg"></div>
   </div>
 
-  <div class="stage" id="stage">
-    <video id="video" autoplay muted playsinline webkit-playsinline></video>
-    <img id="photo" alt="" hidden>
-    <svg id="overlay" class="overlay"></svg>
-    <div id="points" class="points"></div>
-    <div id="card" class="card" hidden>Referenzkarte<small>85,60 × 53,98 mm</small>
-      <button id="cardSize" class="card-size" type="button" aria-label="Größe anpassen">⤡</button>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Modus">
+      <button id="calibrate" type="button" aria-pressed="false">Kalibrieren</button>
+      <button id="measure" type="button" aria-pressed="false">Messen</button>
     </div>
-    <div id="ruler" class="ruler" hidden>
-      <svg id="rulerScale"></svg>
-      <button id="rotate" class="handle rotate" type="button" aria-label="In Schritten drehen">↻</button>
-      <button id="rotateFree" class="handle rotate-free" type="button" aria-label="Frei drehen">✥</button>
+
+    <div class="tools">
+      <button id="cardToggle" type="button" aria-pressed="false">EC-Karte</button>
+      <button id="rulerToggle" type="button" aria-pressed="false">Lineal</button>
+      <button id="take" type="button">Foto</button>
     </div>
-    <div id="hint" class="hint">Kamera starten und anschließend Kalibrierung drücken.</div>
+
+    <div class="actions">
+      <button id="start" type="button">Kamera starten</button>
+      <button id="calCard" type="button" hidden>Auf Karte kalibrieren</button>
+      <button id="closeToggle" type="button" aria-pressed="false" hidden>Umfang</button>
+      <button id="undo" type="button" hidden>Punkt zurück</button>
+      <button id="save" type="button" hidden>Foto speichern</button>
+      <button id="more" type="button" aria-expanded="false">Mehr …</button>
+    </div>
+
+    <div id="menu" class="menu" hidden>
+      <button id="restart" type="button">Kamera neu starten</button>
+      <button id="clearCal" type="button" hidden>Kalibrierung löschen</button>
+      <button id="reset" type="button">Messung zurücksetzen</button>
+    </div>
   </div>
 
   <div id="status" class="status"></div>
@@ -162,7 +188,8 @@ button{cursor:pointer}
 const ACCESS_CODE = "umfang13";
 const STORE_KEY = "kmh.cal";
 const MAX_POINTS = 24;
-const TAP_SLOP = 10;          // px Zeigerbewegung, ab der ein Tipp als Wischen gilt
+const LOUPE_SIZE = 112;       // Darstellungsgröße der Lupe in CSS-Pixeln
+const LOUPE_ZOOM = 2.5;
 const MIN_REF_NORM = 0.02;    // kürzeste zulässige Referenzstrecke, in Stage-Breiten
 const RULER_H = 54;
 const RULER_FALLBACK_W = 280; // Breite ohne Kalibrierung
@@ -195,8 +222,9 @@ let closed = false;           // Umfang-Modus: Polygonzug schließen
 let cal = null;               // {mmPerNorm, refMm}
 let ruler = { visible: false, nx: 0.5, ny: 0.5, angle: 0 };
 let card = { visible: false, nx: 0.5, ny: 0.5, wNorm: 0.4 };
-let tap = null;               // laufender Tipp: {id,x,y,ok}
-let grab = null;              // laufende Lineal-Geste
+let place = null;             // laufendes Setzen: {id}
+let pointDrag = null;         // laufendes Verschieben: {id,kind,idx}
+let grab = null;              // laufende Lineal- oder Kartengeste
 
 /* ================= DOM ================= */
 
@@ -205,7 +233,7 @@ const login = $("login"), app = $("app"), form = $("loginForm"), codeInput = $("
 const errorBox = $("error"), video = $("video"), stage = $("stage"), hint = $("hint");
 const statusBox = $("status"), photo = $("photo"), overlay = $("overlay");
 const pointLayer = $("points"), rulerEl = $("ruler"), rulerScale = $("rulerScale");
-const cardEl = $("card");
+const cardEl = $("card"), loupe = $("loupe");
 const panel = $("panel"), preset = $("preset"), refLen = $("refLen");
 const refUnit = $("refUnit"), panelMsg = $("panelMsg");
 
@@ -304,14 +332,14 @@ function geometry() {
     lines.push({ a, b, kind: "ref" });
     if (cal) labels.push(labelAt(a, b, fmtLen(cal.refMm)));
   }
-  refPoints.forEach((p, i) => dots.push(Object.assign(at(p), { kind: "ref", n: i + 1 })));
+  refPoints.forEach((p, i) => dots.push(Object.assign(at(p), { kind: "ref", i, n: i + 1 })));
 
   for (const [i, j] of segmentPairs()) {
     const a = at(points[i]), b = at(points[j]);
     lines.push({ a, b, kind: j === 0 ? "close" : "seg" });
     labels.push(labelAt(a, b, describe(distPx(points[i], points[j]))));
   }
-  points.forEach((p, i) => dots.push(Object.assign(at(p), { kind: "measure", n: i + 1 })));
+  points.forEach((p, i) => dots.push(Object.assign(at(p), { kind: "measure", i, n: i + 1 })));
 
   return { lines, labels, dots };
 }
@@ -366,18 +394,25 @@ function rulerTicks() {
 
 function render() {
   if (!ready()) return;
+  renderMeasure();
+  renderCard();
+  renderRuler();
+  renderControls();
+}
+
+/** Nur Punkte, Linien und Ausgabe -- günstig genug für jeden Zeigerschritt. */
+function renderMeasure() {
+  if (!ready()) return;
   const g = geometry();
   renderPoints(g);
   renderOverlay(g);
-  renderCard();
-  renderRuler();
   renderStatus();
-  renderControls();
 }
 
 function renderPoints(g) {
   pointLayer.innerHTML = g.dots.map(d =>
-    `<div class="point point--${d.kind}" style="left:${d.x}px;top:${d.y}px">${d.n}</div>`
+    `<div class="point point--${d.kind}" data-kind="${d.kind}" data-i="${d.i}" ` +
+    `style="left:${d.x}px;top:${d.y}px">${d.n}</div>`
   ).join("");
 }
 
@@ -434,7 +469,7 @@ function renderStatus() {
     rows.push(`<div><b>Maßstab:</b> ${num(perCm, 1)} Bildpunkte je cm` +
       (cal.refMm ? ` (Referenz ${esc(fmtLen(cal.refMm))})` : "") + `</div>`);
   } else {
-    rows.push(`<div><b>Nicht kalibriert.</b> Kalibrierung drücken und ein Objekt bekannter Länge ausmessen.</div>`);
+    rows.push(`<div><b>Nicht kalibriert.</b> Kalibrieren drücken und ein Objekt bekannter Länge ausmessen.</div>`);
   }
 
   const pairs = segmentPairs();
@@ -463,9 +498,15 @@ function renderControls() {
   $("measure").setAttribute("aria-pressed", String(mode === "measure"));
   $("rulerToggle").setAttribute("aria-pressed", String(ruler.visible));
   $("cardToggle").setAttribute("aria-pressed", String(card.visible));
-  $("calCard").hidden = !card.visible;
   $("closeToggle").setAttribute("aria-pressed", String(closed));
   $("take").textContent = frozen ? "Live" : "Foto";
+
+  // Nur zeigen, was gerade auch etwas bewirkt.
+  $("start").hidden = !!stream;
+  $("calCard").hidden = !card.visible;
+  $("closeToggle").hidden = points.length < 3;
+  $("undo").hidden = !(points.length || refPoints.length);
+  $("save").hidden = !(frozen || stream);
   $("clearCal").hidden = !cal;
 }
 
@@ -581,18 +622,30 @@ function drawRuler(ctx) {
   ctx.restore();
 }
 
-/** Aktuelles Videobild, exakt so beschnitten wie object-fit:cover auf der Stage. */
-function grabFrame(targetW) {
+/**
+ * Bildquelle samt des Ausschnitts, der genau der Stage entspricht -- also der
+ * Zuschnitt, den object-fit:cover anzeigt. Ohne liveOnly gewinnt das Standbild.
+ */
+function sampleSource(liveOnly) {
+  if (!liveOnly && frozen && shot) {
+    return { el: shot, sx: 0, sy: 0, sw: shot.width, sh: shot.height };
+  }
   const vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh) return null;
 
   let sw = vw, sh = vw / STAGE_RATIO;
   if (sh > vh) { sh = vh; sw = vh * STAGE_RATIO; }
+  return { el: video, sx: (vw - sw) / 2, sy: (vh - sh) / 2, sw, sh };
+}
+
+function grabFrame(targetW) {
+  const s = sampleSource(true);
+  if (!s) return null;
 
   const c = document.createElement("canvas");
   c.width = Math.round(targetW);
   c.height = Math.round(targetW / STAGE_RATIO);
-  c.getContext("2d").drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, c.width, c.height);
+  c.getContext("2d").drawImage(s.el, s.sx, s.sy, s.sw, s.sh, 0, 0, c.width, c.height);
   return c;
 }
 
@@ -683,7 +736,7 @@ async function startCamera() {
     shot = null;
     photo.hidden = true;
     photo.removeAttribute("src");
-    setHint("Kalibrierung drücken und zwei Punkte auf einem Objekt bekannter Länge setzen.");
+    setHint("Kalibrieren drücken und zwei Punkte auf einem Objekt bekannter Länge setzen.");
   } catch (e) {
     setHint(cameraError(e));
   }
@@ -734,19 +787,59 @@ function applyCal() {
   cal = { mmPerNorm: mm / dNorm, refMm: mm };
   saveCal();
   closePanel();
-  setHint("Kalibriert. Messen drücken und Punkte antippen.");
+  setHint("Kalibriert. Messen drücken und Punkte setzen.");
   render();
 }
 
-/* ================= Punkte setzen ================= */
+/* ================= Lupe ================= */
 
-function handleTap(clientX, clientY) {
-  if (mode === "idle") return;
+function crosshair(ctx, m) {
+  ctx.beginPath();
+  ctx.moveTo(m - 26, m); ctx.lineTo(m - 8, m);
+  ctx.moveTo(m + 8, m); ctx.lineTo(m + 26, m);
+  ctx.moveTo(m, m - 26); ctx.lineTo(m, m - 8);
+  ctx.moveTo(m, m + 8); ctx.lineTo(m, m + 26);
+  ctx.stroke();
+}
+
+/** Zeigt vergrößert, was der Finger gerade verdeckt. */
+function showLoupe(x, y) {
+  const src = sampleSource();
+  if (!src || !ready()) { hideLoupe(); return; }
+
+  const k = src.sw / stageW();                    // Quellpixel je Stage-Pixel
+  const half = (LOUPE_SIZE / 2 / LOUPE_ZOOM) * k;
+  const cx = src.sx + x * k, cy = src.sy + y * (src.sh / stageH());
+
+  const ctx = loupe.getContext("2d");
+  ctx.fillStyle = "#101820";
+  ctx.fillRect(0, 0, loupe.width, loupe.height);
+  ctx.drawImage(src.el, cx - half, cy - half, half * 2, half * 2, 0, 0, loupe.width, loupe.height);
+
+  const m = loupe.width / 2;
+  ctx.strokeStyle = "rgba(0,0,0,0.55)"; ctx.lineWidth = 5; crosshair(ctx, m);
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; crosshair(ctx, m);
+
+  // über dem Finger; am oberen Rand klappt sie nach unten
+  let ly = y - LOUPE_SIZE - 18;
+  if (ly < 4) ly = y + 18;
+  loupe.style.left = clamp(x - LOUPE_SIZE / 2, 4, stageW() - LOUPE_SIZE - 4) + "px";
+  loupe.style.top = clamp(ly, 4, stageH() - LOUPE_SIZE - 4) + "px";
+  loupe.hidden = false;
+}
+
+function hideLoupe() { loupe.hidden = true; }
+
+/* ================= Punkte setzen und verschieben ================= */
+
+function local(e) {
   const r = stage.getBoundingClientRect();
-  const p = {
-    nx: clamp((clientX - r.left) / r.width, 0, 1),
-    ny: clamp((clientY - r.top) / r.height, 0, 1)
-  };
+  return { x: clamp(e.clientX - r.left, 0, r.width), y: clamp(e.clientY - r.top, 0, r.height) };
+}
+
+function handleTap(x, y) {
+  if (mode === "idle") return;
+  const p = { nx: clamp(x / stageW(), 0, 1), ny: clamp(y / stageH(), 0, 1) };
 
   if (mode === "calibrate") {
     if (refPoints.length >= 2) return;
@@ -755,7 +848,7 @@ function handleTap(clientX, clientY) {
       mode = "idle";
       openPanel();
     } else {
-      setHint("Zweiten Punkt der Referenzstrecke antippen.");
+      setHint("Zweiten Punkt der Referenzstrecke setzen.");
     }
   } else {
     if (points.length >= MAX_POINTS) {
@@ -767,25 +860,77 @@ function handleTap(clientX, clientY) {
   render();
 }
 
+/** Referenzpunkt verschoben: Maßstab bei gleicher Referenzlänge nachziehen. */
+function recalcFromRef() {
+  if (!cal || !cal.refMm || refPoints.length !== 2) return;
+  const dNorm = distPx(refPoints[0], refPoints[1]) / stageW();
+  if (dNorm >= MIN_REF_NORM) cal = { mmPerNorm: cal.refMm / dNorm, refMm: cal.refMm };
+}
+
 /*
- * Ein einziger pointerup-Listener. Ein zusätzlicher touchend-Listener würde auf
- * iOS doppelt auslösen und beide Punkte auf denselben Fleck setzen.
+ * Genau ein pointerup-Pfad. Ein zusätzlicher touchend-Listener würde auf iOS
+ * doppelt auslösen und beide Punkte auf denselben Fleck setzen.
+ *
+ * Gedrückt halten blendet die Lupe ein, Ziehen verschiebt die Zielmarke,
+ * Loslassen setzt den Punkt -- so lässt sich unter dem Finger genau zielen.
+ * Ein bereits gesetzter Punkt wird auf dieselbe Art nachjustiert.
  */
 stage.addEventListener("pointerdown", e => {
-  tap = { id: e.pointerId, x: e.clientX, y: e.clientY, ok: !e.target.closest(".ruler, .card") };
+  place = pointDrag = null;
+  if (e.target.closest(".ruler, .card")) return;        // haben eigene Gesten
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+
+  const hit = e.target.closest(".point");
+  if (hit) {
+    pointDrag = { id: e.pointerId, kind: hit.dataset.kind, idx: Number(hit.dataset.i) };
+  } else if (mode !== "idle") {
+    place = { id: e.pointerId };
+  } else {
+    return;
+  }
+
+  // Auf der Stage fangen, nicht auf dem Punkt: renderMeasure() ersetzt ihn laufend.
+  stage.setPointerCapture(e.pointerId);
+  const p = local(e);
+  showLoupe(p.x, p.y);
+});
+
+stage.addEventListener("pointermove", e => {
+  const mine = (place && place.id === e.pointerId) || (pointDrag && pointDrag.id === e.pointerId);
+  if (!mine) return;
+  const p = local(e);
+
+  if (pointDrag) {
+    const list = pointDrag.kind === "ref" ? refPoints : points;
+    if (list[pointDrag.idx]) {
+      list[pointDrag.idx] = { nx: p.x / stageW(), ny: p.y / stageH() };
+      if (pointDrag.kind === "ref") recalcFromRef();
+      renderMeasure();
+    }
+  }
+  showLoupe(p.x, p.y);
 });
 
 stage.addEventListener("pointerup", e => {
-  const t = tap;
-  tap = null;
-  if (!t || t.id !== e.pointerId || !t.ok) return;
-  if (e.pointerType === "mouse" && e.button !== 0) return;
-  if (e.target.closest(".ruler, .card")) return;
-  if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > TAP_SLOP) return;
-  handleTap(e.clientX, e.clientY);
+  const moved = pointDrag && pointDrag.id === e.pointerId ? pointDrag : null;
+  const placing = place && place.id === e.pointerId;
+  place = pointDrag = null;
+  hideLoupe();
+
+  if (moved) {
+    if (moved.kind === "ref") saveCal();
+    render();
+    return;
+  }
+  if (!placing) return;
+  const p = local(e);
+  handleTap(p.x, p.y);
 });
 
-stage.addEventListener("pointercancel", () => { tap = null; });
+stage.addEventListener("pointercancel", () => {
+  place = pointDrag = null;
+  hideLoupe();
+});
 
 /* ================= Lineal bewegen und drehen ================= */
 
@@ -886,6 +1031,14 @@ $("rotate").onclick = e => {
 /* ================= Bedienelemente ================= */
 
 $("start").onclick = startCamera;
+$("restart").onclick = startCamera;
+
+$("more").onclick = () => {
+  const open = $("menu").hidden;
+  $("menu").hidden = !open;
+  $("more").setAttribute("aria-expanded", String(open));
+  $("more").textContent = open ? "Weniger" : "Mehr …";
+};
 
 $("calApply").onclick = applyCal;
 
@@ -1022,9 +1175,23 @@ $("reset").onclick = () => {
   mode = "idle";
   closePanel();
   resumeLive();
-  setHint(stream ? "Zurückgesetzt." : "Kamera starten und anschließend Kalibrierung drücken.");
+  setHint(stream ? "Zurückgesetzt." : "Kamera starten und anschließend kalibrieren.");
   render();
 };
+
+/* ================= Tastatur ================= */
+
+document.addEventListener("keydown", e => {
+  if (app.hidden || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+
+  if (e.key === "Escape") {
+    if (!panel.hidden) $("calCancel").click();
+    else if (mode !== "idle") { mode = "idle"; setHint("Modus beendet."); render(); }
+  } else if (e.key === "Backspace") {
+    e.preventDefault();
+    if (points.length || refPoints.length) $("undo").click();
+  }
+});
 
 /* ================= Anmeldung ================= */
 
@@ -1054,6 +1221,8 @@ preset.onchange = () => {
     refLen.focus();
   }
 };
+
+loupe.width = loupe.height = LOUPE_SIZE * 2;   // doppelte Auflösung für scharfe Kanten
 
 cal = loadCal();
 new ResizeObserver(() => render()).observe(stage);
